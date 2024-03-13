@@ -69,7 +69,8 @@ class BBoxHead(BaseModule):
 
         in_channels = self.in_channels
         if self.with_avg_pool:
-            self.avg_pool = nn.AvgPool2d(self.roi_feat_size)
+            # self.avg_pool = nn.AvgPool2d(self.roi_feat_size)
+            self.avg_pool = nn.AdaptiveAvgPool2d(1)
         else:
             in_channels *= self.roi_feat_area
         if self.with_cls:

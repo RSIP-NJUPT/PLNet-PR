@@ -1,5 +1,5 @@
 # training schedule for 1x
-train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=12, val_interval=1)
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=12, val_begin=7, val_interval=1)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
 
@@ -17,9 +17,12 @@ param_scheduler = [
 ]
 
 # optimizer
+#optim_wrapper = dict(
+#    type='OptimWrapper',
+#    optimizer=dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001))
 optim_wrapper = dict(
-    type='OptimWrapper',
-    optimizer=dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001))
+    optimizer=dict(type='AdamW', lr=0.000025, weight_decay=0.0001),
+    clip_grad=dict(max_norm=1, norm_type=2))
 
 # Default setting for scaling LR automatically
 #   - `enable` means enable scaling LR automatically

@@ -391,6 +391,7 @@ class ResNet(BaseModule):
                  init_cfg=None):
         super(ResNet, self).__init__(init_cfg)
         self.zero_init_residual = zero_init_residual
+        
         if depth not in self.arch_settings:
             raise KeyError(f'invalid depth {depth} for resnet')
 
@@ -490,7 +491,9 @@ class ResNet(BaseModule):
 
         self.feat_dim = self.block.expansion * base_channels * 2**(
             len(self.stage_blocks) - 1)
+        
 
+                
     def make_stage_plugins(self, plugins, stage_idx):
         """Make plugins for ResNet ``stage_idx`` th stage.
 

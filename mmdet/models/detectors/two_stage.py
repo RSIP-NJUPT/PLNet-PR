@@ -141,6 +141,7 @@ class TwoStageDetector(BaseDetector):
         roi_outs = self.roi_head.forward(x, rpn_results_list,
                                          batch_data_samples)
         results = results + (roi_outs, )
+
         return results
 
     def loss(self, batch_inputs: Tensor,
@@ -222,7 +223,7 @@ class TwoStageDetector(BaseDetector):
                     the last dimension 4 arrange as (x1, y1, x2, y2).
                 - masks (Tensor): Has a shape (num_instances, H, W).
         """
-
+        print(batch_data_samples[0].img_path)
         assert self.with_bbox, 'Bbox head must be implemented.'
         x = self.extract_feat(batch_inputs)
 
@@ -240,4 +241,5 @@ class TwoStageDetector(BaseDetector):
 
         batch_data_samples = self.add_pred_to_datasample(
             batch_data_samples, results_list)
+                
         return batch_data_samples

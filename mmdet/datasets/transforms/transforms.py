@@ -7,6 +7,8 @@ from typing import List, Optional, Sequence, Tuple, Union
 import cv2
 import mmcv
 import numpy as np
+import mmengine
+import torch
 from mmcv.image.geometric import _scale_size
 from mmcv.transforms import BaseTransform
 from mmcv.transforms import Pad as MMCV_Pad
@@ -3633,4 +3635,178 @@ class CachedMixUp(BaseTransform):
         repr_str += f'max_cached_images={self.max_cached_images}, '
         repr_str += f'random_pop={self.random_pop}, '
         repr_str += f'prob={self.prob})'
+        return repr_str
+
+
+@TRANSFORMS.register_module()
+class RandomRotate(BaseTransform):
+    """Random affine transform data augmentation.
+
+    This operation randomly generates affine transform matrix which including
+    rotation, translation, shear and scaling transforms.
+
+    Required Keys:
+
+    - img
+    - gt_bboxes (BaseBoxes[torch.float32]) (optional)
+    - gt_bboxes_labels (np.int64) (optional)
+    - gt_ignore_flags (bool) (optional)
+
+    Modified Keys:
+
+    - img
+    - img_shape
+    - gt_bboxes (optional)
+    - gt_bboxes_labels (optional)
+    - gt_ignore_flags (optional)
+
+    Args:
+        max_rotate_degree (float): Maximum degrees of rotation transform.
+            Defaults to 10.
+        max_translate_ratio (float): Maximum ratio of translation.
+            Defaults to 0.1.
+        scaling_ratio_range (tuple[float]): Min and max ratio of
+            scaling transform. Defaults to (0.5, 1.5).
+        max_shear_degree (float): Maximum degrees of shear
+            transform. Defaults to 2.
+        border (tuple[int]): Distance from width and height sides of input
+            image to adjust output shape. Only used in mosaic dataset.
+            Defaults to (0, 0).
+        border_val (tuple[int]): Border padding values of 3 channels.
+            Defaults to (114, 114, 114).
+        bbox_clip_border (bool, optional): Whether to clip the objects outside
+            the border of the image. In some dataset like MOT17, the gt bboxes
+            are allowed to cross the border of images. Therefore, we don't
+            need to clip the gt bboxes in these cases. Defaults to True.
+    """
+
+    def __init__(self,
+                 rotate_ratio=0.5,
+                 mode='range',
+                 angles_range=180,
+                 auto_bound=False,
+
+                 border: Tuple[int, int] = (0, 0),
+                 border_val: Tuple[int, int, int] = (114, 114, 114),
+                 bbox_clip_border: bool = True) -> None:
+        self.rotate_ratio = rotate_ratio
+        self.auto_bound = auto_bound
+        assert mode in ['range', 'value'], \
+            f"mode is supposed to be 'range' or 'value', but got {mode}."
+        if mode == 'range':
+            assert isinstance(angles_range, int), \
+                "mode 'range' expects angle_range to be an int."
+        else:
+            assert mmengine.is_seq_of(angles_range, int) and len(angles_range), \
+                "mode 'value' expects angle_range as a non-empty list of int."
+        self.mode = mode
+        self.angles_range = angles_range
+
+        self.border = border
+        self.border_val = border_val
+        self.bbox_clip_border = bbox_clip_border
+
+    @property
+    def is_rotate(self):
+        """Randomly decide whether to rotate."""
+        return np.random.rand() < self.rotate_ratio
+
+    def apply_image(self, img, bound_h, bound_w, interp=cv2.INTER_LINEAR):
+        """
+        img should be a numpy array, formatted as Height * Width * Nchannels
+        """
+        if len(img) == 0:
+            return img
+        return cv2.warpAffine(
+            img, self.rm_image, (bound_w, bound_h), flags=interp)
+
+    def apply_coords(self, coords):
+        """
+        coords should be a N * 2 array-like, containing N couples of (x, y)
+        points
+        """
+        if len(coords) == 0:
+            return coords
+        coords = np.asarray(coords, dtype=float)
+        return cv2.transform(coords[:, np.newaxis, :], self.rm_coords)[:, 0, :]
+
+    def create_rotation_matrix(self,
+                               center,
+                               angle,
+                               bound_h,
+                               bound_w,
+                               offset=0):
+        """Create rotation matrix."""
+        center += offset
+        rm = cv2.getRotationMatrix2D(tuple(center), angle, 1)
+        if self.auto_bound:
+            rot_im_center = cv2.transform(center[None, None, :] + offset,
+                                          rm)[0, 0, :]
+            new_center = np.array([bound_w / 2, bound_h / 2
+                                   ]) + offset - rot_im_center
+            rm[:, 2] += new_center
+        return rm
+
+    @autocast_box_type()
+    def transform(self, results: dict) -> dict:
+        if not self.is_rotate:
+            results['rotate'] = False
+            angle = 0
+        else:
+            results['rotate'] = True
+            if self.mode == 'range':
+                angle = self.angles_range * (2 * np.random.rand() - 1)
+            else:
+                i = np.random.randint(len(self.angles_range))
+                angle = self.angles_range[i]
+
+        img = results['img']
+        h = img.shape[0] + self.border[1] * 2
+        w = img.shape[1] + self.border[0] * 2
+        print(img.shape)
+        image_center = np.array((w / 2, h / 2))
+        abs_cos, abs_sin = \
+            abs(np.cos(angle / 180 * np.pi)), abs(np.sin(angle / 180 * np.pi))
+        if self.auto_bound:
+            bound_w, bound_h = np.rint(
+                [h * abs_sin + w * abs_cos,
+                 h * abs_cos + w * abs_sin]).astype(int)
+        else:
+            bound_w, bound_h = w, h
+
+        self.rm_coords = self.create_rotation_matrix(image_center, angle,
+                                                     bound_h, bound_w)
+        self.rm_image = self.create_rotation_matrix(
+            image_center, angle, bound_h, bound_w, offset=-0.5)
+
+        img = self.apply_image(img, bound_h, bound_w)
+        results['img'] = img
+        results['img_shape'] = img.shape[:2]
+
+        bboxes = results['gt_bboxes']
+        num_bboxes = len(bboxes)
+        if num_bboxes:
+            # rotate box
+            # print(bboxes.shape)
+            # print(bboxes)
+            polys = bboxes.tensor.reshape(-1, 2)
+            bboxes.tensor = torch.Tensor(self.apply_coords(polys).reshape(-1, 4))
+            # remove outside bbox
+            valid_index = bboxes.is_inside([h, w]).numpy()
+            results['gt_bboxes'] = bboxes[valid_index]
+            results['gt_bboxes_labels'] = results['gt_bboxes_labels'][
+                valid_index]
+            results['gt_ignore_flags'] = results['gt_ignore_flags'][
+                valid_index]
+
+            if 'gt_masks' in results:
+                raise NotImplementedError('RandomAffine only supports bbox.')
+        return results
+
+    def __repr__(self):
+        repr_str = self.__class__.__name__
+        repr_str += f'(max_rotate_degree={self.max_rotate_degree}, '
+        repr_str += f'border={self.border}, '
+        repr_str += f'border_val={self.border_val}, '
+        repr_str += f'bbox_clip_border={self.bbox_clip_border})'
         return repr_str
