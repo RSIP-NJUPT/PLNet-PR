@@ -1,5 +1,5 @@
 # ERGRPLNet
-This an official Pytorch implementation of our paper "**Effective Graph Relation and Prototype Learning Network for Object Detection in Remote Sensing Images**".
+This an official Pytorch implementation of our paper "**Object Detection in Remote Sensing Imagery Based on Prototype Learning Network with Proposal Relation**".
 The specific details of the model are as follows.
 ![EGRPLNet](./figure/EGRPLNet.png)
 ****
