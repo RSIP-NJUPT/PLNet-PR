@@ -71,8 +71,9 @@ class GPRLM(nn.Module):
             nn.ReLU(),
             nn.BatchNorm2d(fc_out_channels),
             )
-        self.up_fc = nn.Linear(fc_out_channels, in_channels * (roi_feat_size//2) * (roi_feat_size//2))
-        
+        # self.up_fc = nn.Linear(fc_out_channels, in_channels * (roi_feat_size//2) * (roi_feat_size//2))
+        self.up_fc = nn.Linear(fc_out_channels, in_channels * roi_feat_size * roi_feat_size)
+
         nhid = fc_out_channels
         self.graph_fc1 = nn.Linear(nhid, nhid)
         self.graph_fc2 = nn.Linear(nhid, nhid)
@@ -133,10 +134,10 @@ class GPRLM(nn.Module):
             bbox_feat = F.relu(self.gc1(bbox_feat, adj))
             bbox_feat = F.dropout(bbox_feat, self.dropout, training=self.training)
             bbox_feat = self.gc2(bbox_feat, adj) + res_bbox_feat
-            #bbox_feat = self.up_fc(bbox_feat) + ori_bbox_feat
-            bbox_feat = self.up_fc(bbox_feat).reshape([N,C, (H//2), (W//2)])
-            bbox_feat = F.interpolate(bbox_feat, size=[H, W], mode='bilinear').flatten(1)
-            bbox_feat = bbox_feat + ori_bbox_feat
+            bbox_feat = self.up_fc(bbox_feat) + ori_bbox_feat
+            # bbox_feat = self.up_fc(bbox_feat).reshape([N,C, (H//2), (W//2)])
+            # bbox_feat = F.interpolate(bbox_feat, size=[H, W], mode='bilinear').flatten(1)
+            # bbox_feat = bbox_feat + ori_bbox_feat
 
             bbox_feat_lst.append(bbox_feat.reshape(N, C, H, W))
         bbox_feat_lst = torch.concat(bbox_feat_lst, dim=0)

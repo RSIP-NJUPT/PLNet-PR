@@ -1,4 +1,4 @@
-# ERGRPLNet
+# PLNet-PR
 This an official Pytorch implementation of our paper "**Object Detection in Remote Sensing Imagery Based on Prototype Learning Network with Proposal Relation**".
 The specific details of the model are as follows.
 ![EGRPLNet](./figure/EGRPLNet.png)
